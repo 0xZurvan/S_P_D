@@ -1,6 +1,6 @@
-// SPDX-License-Identifier: UNLICENSED
 
-pragma solidity  ^0.8.13;
+// SPDX-License-Identifier: MIT
+pragma solidity  ^0.8.19;
 
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
@@ -27,6 +27,8 @@ contract Civilians is ERC721Enumerable, AccessControl {
     string private baseURI;
     mapping(uint256 => Civilian) public tokenIdToCivilian;
 
+    error UnsuccessfulWithdraw();
+
     constructor(
         string memory _contractName,
         string memory _contractSymbol,
@@ -35,6 +37,11 @@ contract Civilians is ERC721Enumerable, AccessControl {
     ERC721(_contractName, _contractSymbol) {
         maxSupply = _setMaxSupply;
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
+    }
+
+    modifier tokenMustExist(uint256 _tokenId) {
+        require(_exists(_tokenId), "Token doesn't exist");
+        _;
     }
 
     function updateBaseURI(string memory _baseURI) external onlyRole(DEFAULT_ADMIN_ROLE) {
@@ -56,13 +63,12 @@ contract Civilians is ERC721Enumerable, AccessControl {
 
     }
 
-    function increaseCivilianSP(address _rulersTokenAddr, uint256 _tokenId) external {
-        require(_exists(_tokenId), "Error, token doesn't exist");
-        require(tokenIdToCivilian[_tokenId].sP != civilianStatePsychopath[6], "Error, token SP at his limit!");
+    function increaseCivilianSP(address _rulersTokenAddr, uint256 _tokenId) external tokenMustExist(_tokenId) {
+        require(tokenIdToCivilian[_tokenId].sP != civilianStatePsychopath[6], "Token SP is at limit!");
 
         if(IERC721(_rulersTokenAddr).balanceOf(msg.sender) >= 1) {
-            bool isFound = false;
-            while(isFound == false) {
+            bool _isFound = false;
+            while(_isFound == false) {
                 uint256 _index = 0;
                 if(tokenIdToCivilian[_tokenId].sP == civilianStatePsychopath[_index]) {
                     _index++;
@@ -76,9 +82,7 @@ contract Civilians is ERC721Enumerable, AccessControl {
         
     }
 
-    function killCivilian(address _rulersTokenAddr, uint256 _tokenId) external {
-        require(_exists(_tokenId), "Error, token doesn't exist");
-
+    function killCivilian(address _rulersTokenAddr, uint256 _tokenId) external tokenMustExist(_tokenId) {
         if(IERC721(_rulersTokenAddr).balanceOf(msg.sender) >= 1) {
             _burn(_tokenId);
         }
@@ -86,14 +90,18 @@ contract Civilians is ERC721Enumerable, AccessControl {
     }
 
     function withdraw() external onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(address(this).balance > 0, "Error, the contract is empty");
+        uint256 _balance = address(this).balance;
+        require(_balance > 0, "Contract is empty");
 
-        (bool success, ) = payable(msg.sender).call{value: address(this).balance}("");
-        require(success);
+        (bool success, ) = payable(msg.sender).call{value: _balance}("");
+        if (!success) {
+            revert UnsuccessfulWithdraw();
+        }
+
+        assert(_balance == 0);
     }
 
-    function tokenURI(uint256 _tokenId) public view virtual override returns(string memory _tokenURI) {
-        require(_exists(_tokenId), "ERC721Metadata: URI query for nonexistent token");
+    function tokenURI(uint256 _tokenId) public view virtual override tokenMustExist(_tokenId) returns(string memory _tokenURI) {
 
         return bytes(baseURI).length > 0 ?
            string(abi.encodePacked(baseURI, _tokenId.toString(), baseExtension)) : "";

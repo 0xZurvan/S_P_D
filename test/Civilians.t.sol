@@ -1,6 +1,6 @@
 
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.17;
+pragma solidity ^0.8.19;
 
 import "forge-std/Test.sol";
 import { Civilians } from "../src/Civilians.sol";
@@ -17,11 +17,8 @@ contract CiviliansTest is Test {
 
   function setUp() public {
     civilians = new Civilians("Civilians", "CVS", 20);
-    detectives = new Detectives("Detectives", "DTS", 20, 1, address(0));
+    detectives = new Detectives(address(0));
     rulers = new Rulers(
-      "Rulers", 
-      "RLS", 
-      20, 
       0xeb673d1167741de01e46e8792e6936904dce49145827532ad0c39a679efbf8f2,
       address(0), 
       address(detectives)

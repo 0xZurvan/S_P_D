@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 
-pragma solidity  ^0.8.13;
+pragma solidity  ^0.8.19;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
@@ -18,68 +18,63 @@ interface IDetectives {
 
 contract Approval is ERC20, AccessControl {
 
-    uint256 public maxSupply;
-    uint256 public burntSupply;
-    uint256 public illegalPrice;
-    uint256 public maxRequests = 20;
-    address internal illegalSeller;
-    address[] public requesters;
-    address private detectivesTokenAddr;
-    address private rulersTokenAddr;
-    mapping(address => uint256) public detectiveTorequestAmount;
-    mapping(address => uint256) private detectiveToFeed;
+    uint128 public constant s_maxSupply = 200e18;
+    uint96 public constant s_illegalPrice = 1 ether;
+    uint96 public constant s_maxRequests = 20;
+    address internal immutable s_illegalSeller;
+    address[] public s_requesters;
+    uint256 public s_burntSupply;
+    mapping(address => uint256) public s_detectiveTorequestAmount;
+    address private immutable s_detectivesTokenAddr;
+    address private immutable s_rulersTokenAddr;
+    mapping(address => uint256) private s_detectiveToFee;
+
+    error UnsuccessfulWithdraw();
 
     constructor(
-        string memory _name,
-        string memory _symbol,
         address _illegalSeller,
         address _detectivesTokenAddr,
         address _rulersTokenAddr
         )
-    ERC20(_name, _symbol) {
+    ERC20("Approval", "APPROVAL") {
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        illegalSeller = _illegalSeller;
-        detectivesTokenAddr = _detectivesTokenAddr;
-        rulersTokenAddr = _rulersTokenAddr;
+        s_illegalSeller = _illegalSeller;
+        s_detectivesTokenAddr = _detectivesTokenAddr;
+        s_rulersTokenAddr = _rulersTokenAddr;
 
-    }
-
-    function updateMaxSupply(uint256 _newMaxSupply) external {
-        require(hasRole(DEFAULT_ADMIN_ROLE, _msgSender()), "Error, Only admin can update");
-        maxSupply = _newMaxSupply;
     }
 
     function requetApproval() external payable {
-        require(balanceOf(msg.sender) > 0, "Error, you can't request more approval");
-        require(requesters.length < maxRequests, "Error, requests are at their limit");
-        require(IDetectives(detectivesTokenAddr).balanceOf(msg.sender) >= 1, "Error, you are not a detective");
+        require(balanceOf(msg.sender) > 0, "Can't request more approval");
+        require(s_requesters.length < s_maxRequests, "Requests are at their limit");
+        require(IDetectives(s_detectivesTokenAddr).balanceOf(msg.sender) >= 1, "Not a detective");
          
-        uint256 feed;
-        if(detectiveTorequestAmount[msg.sender] >= 7) {
-            feed = 14 wei;
-            require(msg.value >= feed, "Error, need to pay your feeds");
-            detectiveTorequestAmount[msg.sender] = 0;
+        uint256 _fee;
+        if(s_detectiveTorequestAmount[msg.sender] >= 7) {
+            _fee = 14 wei;
+            require(msg.value >= _fee, "Pay your fees");
+            s_detectiveTorequestAmount[msg.sender] = 0;
 
         } else {
-            feed = 1 wei;
-            require(msg.value >= feed, "Error, need to pay your feeds");
-            detectiveTorequestAmount[msg.sender]++;
+            _fee = 1 wei;
+            require(msg.value >= _fee, "Pay your feeds");
+            s_detectiveTorequestAmount[msg.sender]++;
         }
 
-        detectiveToFeed[msg.sender] = msg.value;
-        requesters.push(msg.sender);
+        s_detectiveToFee[msg.sender] = msg.value;
+        s_requesters.push(msg.sender);
     }
 
     function deleteRequester(address _requester) external {
-        require(IRulers(rulersTokenAddr).balanceOf(msg.sender) >= 1, "Error, you are not a ruler");
-        require(balanceOf(_requester) >= 1, "Error, requester hasn't receive approval yet");
+        require(IRulers(s_rulersTokenAddr).balanceOf(msg.sender) >= 1, "Not a ruler");
+        require(balanceOf(_requester) >= 1, "Requester hasn't receive approval yet");
         
-        bool isFound = false;
-        while(isFound == false) {
+        bool _isFound = false;
+        while(_isFound == false) {
             uint256 _index = 0;
-            if(requesters[_index] == _requester) {
-                delete requesters[_index];
-                isFound = true;
+            if(s_requesters[_index] == _requester) {
+                delete s_requesters[_index];
+                _isFound = true;
             } else {
                 _index++;
             }
@@ -88,70 +83,76 @@ contract Approval is ERC20, AccessControl {
     }
 
     function sendToRequester(address _requester, uint256 _detectiveTokenId) external {
-        uint256 bigNumber = 1e18;
-        uint256 total;
+        uint256 _bigNumber = 1e18;
+        uint256 _total;
 
-        require(IRulers(rulersTokenAddr).balanceOf(msg.sender) >= 1, "Error, you are not a ruler");
+        require(IRulers(s_rulersTokenAddr).balanceOf(msg.sender) >= 1, "Not a ruler");
         require(
-            totalSupply() + total <= (maxSupply - burntSupply),
+            totalSupply() + _total <= (s_maxSupply - s_burntSupply),
             "Max has been reached."
         );
 
-        if(IDetectives(detectivesTokenAddr).getDetectiveRank(_detectiveTokenId) == 6) {
-            total = 5 * bigNumber;
-            _mint(_requester, total);
+        if(IDetectives(s_detectivesTokenAddr).getDetectiveRank(_detectiveTokenId) == 6) {
+            _total = 5 * _bigNumber;
+            _mint(_requester, _total);
 
-        } else if(IDetectives(detectivesTokenAddr).getDetectiveRank(_detectiveTokenId) >= 4) {
-            total = 3 * bigNumber;
-            _mint(_requester, total);
+        } else if(IDetectives(s_detectivesTokenAddr).getDetectiveRank(_detectiveTokenId) >= 4) {
+            _total = 3 * _bigNumber;
+            _mint(_requester, _total);
 
-        } else if(IDetectives(detectivesTokenAddr).getDetectiveRank(_detectiveTokenId) >= 2) {
-            total = 2 * bigNumber;
-            _mint(_requester, total);
+        } else if(IDetectives(s_detectivesTokenAddr).getDetectiveRank(_detectiveTokenId) >= 2) {
+            _total = 2 * _bigNumber;
+            _mint(_requester, _total);
 
         } else {
-            _mint(_requester, bigNumber);
+            _mint(_requester, _bigNumber);
         }
 
-        transferFrom(address(this), msg.sender, detectiveToFeed[_requester]);
+        transferFrom(address(this), msg.sender, s_detectiveToFee[_requester]);
 
     }
 
     function buyIlegallys(uint256 _amount) external payable {
-        uint256 bigNumber = _amount * illegalPrice;
+        uint256 bigNumber = _amount * s_illegalPrice;
 
         require(msg.value >= bigNumber, "Must send right amount.");
-        require(IDetectives(detectivesTokenAddr).balanceOf(msg.sender) >= 1, "Error, you are not a detective");
+        require(IDetectives(s_detectivesTokenAddr).balanceOf(msg.sender) >= 1, "Error, you are not a detective");
         require(
-            totalSupply() + bigNumber <= (maxSupply - burntSupply),
+            totalSupply() + bigNumber <= (s_maxSupply - s_burntSupply),
             "Max has been reached."
         );
 
         // Pay to the illegalSeller
-        payable(illegalSeller).transfer(msg.value);
+        payable(s_illegalSeller).transfer(msg.value);
 
         _mint(msg.sender, bigNumber);
 
-        uint256 _tokenId = IDetectives(detectivesTokenAddr).tokenOfOwnerByIndex(msg.sender, 0);
-        IDetectives(detectivesTokenAddr).increaseDetectiveSP(_tokenId);
+        uint256 _tokenId = IDetectives(s_detectivesTokenAddr).tokenOfOwnerByIndex(msg.sender, 0);
+        IDetectives(s_detectivesTokenAddr).increaseDetectiveSP(_tokenId);
     }
 
     function burn(address _account, uint256 _amount) external {
         require(
             hasRole(DEFAULT_ADMIN_ROLE, _msgSender()),
-            "Error, only admin can burn"
+            "Only admin can burn"
         );
-        require(maxSupply - burntSupply > 0, "Nothing to burn.");
+        require(s_maxSupply - s_burntSupply > 0, "Nothing to burn.");
 
-        burntSupply += _amount;
+        s_burntSupply += _amount;
         _burn(_account, _amount);
     }
 
-    function withdraw() external {
-        require(hasRole(DEFAULT_ADMIN_ROLE, _msgSender()), "Error, only admin can withdraw");
-        require(address(this).balance > 0, "Error, the contract is empty");
+    function withdraw() external onlyRole(DEFAULT_ADMIN_ROLE) {
+        uint256 _balance = address(this).balance;
+        require(hasRole(DEFAULT_ADMIN_ROLE, _msgSender()), "Only admin can withdraw");
+        require(_balance > 0, "Contract is empty");
 
-        payable(msg.sender).transfer(address(this).balance);
+        (bool success, ) = payable(msg.sender).call{value: _balance}("");
+        if (!success) {
+            revert UnsuccessfulWithdraw();
+        }
+
+        assert(_balance == 0);
     }
 
 }
